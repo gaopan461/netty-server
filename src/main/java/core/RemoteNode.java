@@ -5,6 +5,8 @@ import java.util.Deque;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
 
+import core.handler.ClientHandler;
+import core.handler.MessagePackEncode;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
@@ -17,7 +19,6 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.codec.string.StringEncoder;
-import core.handler.ClientHandler;
 
 /**
  * 远程Node
@@ -39,7 +40,7 @@ public class RemoteNode {
     /** 连接套接字 */
     private Channel channel;
     /** 待发送缓存队列 */
-    private Deque<String> pendingMessages = new ConcurrentLinkedDeque<>();
+    private Deque<MessagePack> pendingMessages = new ConcurrentLinkedDeque<>();
 
     /** 最后一次收到连接检查时间 */
     private long lastRecvPingTime;
@@ -67,6 +68,7 @@ public class RemoteNode {
                         ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast(new LengthFieldPrepender(4, true));
                         pipeline.addLast(new StringEncoder(StandardCharsets.UTF_8));
+                        pipeline.addLast(new MessagePackEncode());
                         pipeline.addLast(new ClientHandler(RemoteNode.this));
                     }
                 });
@@ -75,15 +77,14 @@ public class RemoteNode {
     }
 
     public void reconnect() {
-        System.out.println(String.format("开始连接，remoteId=%s，remoteAddr=%s:%d", id, ip, port));
+        Log.core.info("[{} ---> {}]开始连接到服务器，服务器地址={}:{}", localNode.getId(), id, ip, port);
 
         ChannelFuture future = bootstrap.connect(ip, port);
         future.addListener(f -> {
             if (f.isSuccess()) {
                 channel = future.channel();
             } else {
-                // 连接失败，5秒后再次尝试
-                System.out.println(String.format("连接失败，将在5秒后再次尝试，remoteId=%s，remoteAddr=%s:%d", id, ip, port));
+                Log.core.info("[{} ---> {}]连接服务器失败，将在5秒后再次尝试，服务器地址={}:{}", localNode.getId(), id, ip, port);
                 bootstrap.config().group().schedule(this::reconnect, 5, TimeUnit.SECONDS);
             }
         });
@@ -97,31 +98,34 @@ public class RemoteNode {
         lastRecvPingTime = System.currentTimeMillis();
     }
 
-    public void sendMessage(String message) {
-        message = String.format("%s:%s", localNode.getId(), message);
+    public void sendMessage(MessagePack messagePack) {
         if (channel == null || !channel.isActive() || !channel.isWritable()) {
-            pendingMessages.addLast(message);
+            pendingMessages.addLast(messagePack);
         } else {
-            channel.writeAndFlush(message);
+            channel.writeAndFlush(messagePack);
         }
     }
 
     public void sendPing() {
         if (channel != null && channel.isActive() || channel.isWritable()) {
-            channel.writeAndFlush(String.format("%s:Ping:%d", localNode.getId(), localNode.getPort()));
+            channel.writeAndFlush(localNode.getPingMessage());
         }
     }
 
     public void flushPendingMessages() {
-        String message = null;
-        while ((message = pendingMessages.pollFirst()) != null) {
+        MessagePack messagePack = null;
+        while ((messagePack = pendingMessages.pollFirst()) != null) {
             if (channel != null && channel.isActive() && channel.isWritable()) {
-                channel.writeAndFlush(message);
+                channel.writeAndFlush(messagePack);
             } else {
-                pendingMessages.addFirst(message);
+                pendingMessages.addFirst(messagePack);
                 break;
             }
         }
+    }
+
+    public Node getLocalNode() {
+        return localNode;
     }
 
     public String getId() {

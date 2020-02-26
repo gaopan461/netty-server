@@ -3,11 +3,12 @@ package core.handler;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
 
+import core.Log;
+import core.RemoteNode;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.Future;
-import core.RemoteNode;
 
 /**
  * Node通信客户端Handler
@@ -25,7 +26,8 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        System.out.println(String.format("连接成功，remoteId=%s, remoteAddr=%s", remoteNode.getId(), ctx.channel().remoteAddress()));
+        Log.conn.debug("[{} ---> {}]连接到服务器成功，服务器地址={}", remoteNode.getLocalNode().getId(),
+                remoteNode.getId(), ctx.channel().remoteAddress());
 
         // 开始发送Ping
         startPing(ctx, 0);
@@ -51,7 +53,8 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        System.out.println(String.format("连接断开，remoteId=%s，remoteAddr=%s", remoteNode.getId(), ctx.channel().remoteAddress()));
+        Log.conn.debug("[{} <--- {}]服务器断开了连接，服务器地址={}", remoteNode.getLocalNode().getId(),
+                remoteNode.getId(), ctx.channel().remoteAddress());
 
         // 取消ping
         stopPing();
@@ -62,8 +65,8 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
-        System.out.println(String.format("写状态改变，writable=%b，remoteId=%s，remoteAddr=%s",
-                ctx.channel().isWritable(), remoteNode.getId(), ctx.channel().remoteAddress()));
+        Log.conn.debug("[{} <--- {}]服务器写状态改变，服务器地址={}，writable={}", remoteNode.getLocalNode().getId(),
+                remoteNode.getId(), ctx.channel().remoteAddress(), ctx.channel().isWritable());
 
         // 又可以写了，刷新一下缓冲队列
         if (ctx.channel().isWritable()) {

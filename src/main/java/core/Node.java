@@ -6,18 +6,18 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import core.handler.MessagePackDecode;
+import core.handler.ServerHandler;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
-import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.string.StringDecoder;
-import core.handler.ServerHandler;
 
 /**
  * 一个节点（进程）
@@ -29,14 +29,18 @@ public class Node {
     /** node的监听端口 */
     private int port;
 
+    /** 已经编码后的ping消息 */
+    private MessagePack pingMessage;
+
     /** 远程节点列表 */
     private Map<String, RemoteNode> remoteNodes = new ConcurrentHashMap<>();
     /** 接收到待处理的请求 */
-    private Queue<String> receivedMessages = new ConcurrentLinkedQueue<>();
+    private Queue<MessagePack> receivedMessages = new ConcurrentLinkedQueue<>();
 
     public Node(String id, int port) {
         this.id = id;
         this.port = port;
+        this.pingMessage = MessagePack.buildPing(id, port);
     }
 
     public void startup() {
@@ -50,13 +54,13 @@ public class Node {
                 .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
                 .childOption(ChannelOption.TCP_NODELAY, true)
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
-                .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(256*1024, 512*1024))
                 .childHandler(new ChannelInitializer<NioSocketChannel>() {
                     @Override
                     protected void initChannel(NioSocketChannel ch) throws Exception {
                         ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast(new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 0, 4, -4, 4));
                         pipeline.addLast(new StringDecoder(StandardCharsets.UTF_8));
+                        pipeline.addLast(new MessagePackDecode());
                         pipeline.addLast(new ServerHandler(Node.this));
                     }
                 });
@@ -65,7 +69,7 @@ public class Node {
     }
 
     public void pulse() {
-        String message;
+        MessagePack message;
         while ((message = receivedMessages.poll()) != null) {
             handleMessage(message);
         }
@@ -75,8 +79,8 @@ public class Node {
         }
     }
 
-    private void handleMessage(String message) {
-        System.out.println(String.format("收到消息：%s，nodeId=%s", message, id));
+    private void handleMessage(MessagePack messagePack) {
+        Log.core.info("[{} <--- {}]处理消息，消息={}", id, messagePack.getSender(), messagePack.getContext());
     }
 
     public void handlePing(String nodeId, String ip, int port) {
@@ -98,21 +102,21 @@ public class Node {
     public void sendMessage(String nodeId, String message) {
         RemoteNode remoteNode = remoteNodes.get(nodeId);
         if (remoteNode != null) {
-            remoteNode.sendMessage(message);
+            remoteNode.sendMessage(MessagePack.buildMessage(id, message));
         } else {
-            System.err.println(String.format("发送消息失败，未知的远程节点，remoteId=%s，message=%s", nodeId, message));
+            Log.core.info("[{} ---> {}发送消息失败，未知的远程节点，message={}]", id, nodeId, message);
         }
     }
 
-    public void addReceiveMessage(String message) {
-        receivedMessages.offer(message);
+    public void addReceiveMessage(MessagePack messagePack) {
+        receivedMessages.offer(messagePack);
     }
 
     public String getId() {
         return id;
     }
 
-    public int getPort() {
-        return port;
+    public MessagePack getPingMessage() {
+        return pingMessage;
     }
 }
