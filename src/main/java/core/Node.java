@@ -29,6 +29,11 @@ public class Node {
     /** node的监听端口 */
     private int port;
 
+    /** netty boss */
+    private NioEventLoopGroup boss;
+    /** netty worker */
+    private NioEventLoopGroup worker;
+
     /** 已经编码后的ping消息 */
     private MessagePack pingMessage;
 
@@ -44,10 +49,10 @@ public class Node {
     }
 
     public void startup() {
-        NioEventLoopGroup boss = new NioEventLoopGroup(1);
-        NioEventLoopGroup worker = new NioEventLoopGroup(1);
-        ServerBootstrap b = new ServerBootstrap();
-        b.group(boss, worker)
+        boss = new NioEventLoopGroup(1);
+        worker = new NioEventLoopGroup(1);
+        ServerBootstrap bootstrap = new ServerBootstrap();
+        bootstrap.group(boss, worker)
                 .channel(NioServerSocketChannel.class)
                 .option(ChannelOption.SO_BACKLOG, 1024)
                 .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
@@ -65,7 +70,12 @@ public class Node {
                     }
                 });
 
-            b.bind(port);
+            bootstrap.bind(port);
+    }
+
+    public void shutdown() {
+        worker.shutdownGracefully();
+        boss.shutdownGracefully();
     }
 
     public void pulse() {
@@ -96,6 +106,13 @@ public class Node {
             return newNode;
         } else {
             return oldNode;
+        }
+    }
+
+    public void delRemoteNode(String nodeId) {
+        RemoteNode remoteNode = remoteNodes.remove(nodeId);
+        if (remoteNode != null) {
+            remoteNode.shutdown();
         }
     }
 

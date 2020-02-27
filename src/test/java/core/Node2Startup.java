@@ -10,7 +10,7 @@ public class Node2Startup {
         node.startup();
         while (true) {
             node.pulse();
-            Thread.sleep(20);
+            Thread.sleep(1000);
         }
     }
 

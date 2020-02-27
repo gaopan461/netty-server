@@ -35,6 +35,9 @@ public class RemoteNode {
     /** 远程node的端口 */
     private int port;
 
+    /** netty worker */
+    private NioEventLoopGroup worker;
+
     /** 客户端连接引导器 */
     private Bootstrap bootstrap;
     /** 连接套接字 */
@@ -53,7 +56,7 @@ public class RemoteNode {
     }
 
     public void startup() {
-        NioEventLoopGroup worker = new NioEventLoopGroup(1);
+        worker = new NioEventLoopGroup(1);
         bootstrap = new Bootstrap();
         bootstrap.group(worker)
                 .channel(NioSocketChannel.class)
@@ -76,6 +79,12 @@ public class RemoteNode {
         reconnect();
     }
 
+    public void shutdown() {
+        if (worker != null) {
+            worker.shutdownGracefully();
+        }
+    }
+
     public void reconnect() {
         Log.core.info("[{} ---> {}]开始连接到服务器，服务器地址={}:{}", localNode.getId(), id, ip, port);
 
@@ -84,7 +93,8 @@ public class RemoteNode {
             if (f.isSuccess()) {
                 channel = future.channel();
             } else {
-                Log.core.info("[{} ---> {}]连接服务器失败，将在5秒后再次尝试，服务器地址={}:{}", localNode.getId(), id, ip, port);
+                Log.core.info("[{} ---> {}]连接服务器失败，将在5秒后再次尝试，服务器地址={}:{}，失败原因={}",
+                        localNode.getId(), id, ip, port, f.cause().getMessage());
                 bootstrap.config().group().schedule(this::reconnect, 5, TimeUnit.SECONDS);
             }
         });
