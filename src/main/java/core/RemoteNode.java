@@ -134,6 +134,24 @@ public class RemoteNode {
         }
     }
 
+    /**
+     * 判断是否需要重建RemoteNode<br>
+     * 注：如果老节点已经断开，且新节点的ip或端口发生变化，用新节点重建RemoteNode
+     * @param newNode
+     * @return
+     */
+    public boolean needRebuild(RemoteNode newNode) {
+        if (isActive()) {
+            return false;
+        } else {
+            return !ip.equals(newNode.ip) || port != newNode.port;
+        }
+    }
+
+    public boolean isActive() {
+        return channel != null && channel.isActive();
+    }
+
     public Node getLocalNode() {
         return localNode;
     }

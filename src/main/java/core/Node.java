@@ -100,13 +100,18 @@ public class Node {
 
     public RemoteNode addRemoteNode(String nodeId, String ip, int port) {
         RemoteNode newNode = new RemoteNode(this, nodeId, ip, port);
-        RemoteNode oldNode = remoteNodes.putIfAbsent(nodeId, newNode);
-        if (oldNode == null) {
-            newNode.startup();
-            return newNode;
-        } else {
-            return oldNode;
-        }
+        return remoteNodes.compute(nodeId, (k, v) -> {
+            if (v == null) {
+                newNode.startup();
+                return newNode;
+            } else if (v.needRebuild(newNode)) {
+                v.shutdown();
+                newNode.startup();
+                return newNode;
+            } else {
+                return v;
+            }
+        });
     }
 
     public void delRemoteNode(String nodeId) {
