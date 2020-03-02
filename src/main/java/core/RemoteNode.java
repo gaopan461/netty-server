@@ -1,24 +1,19 @@
 package core;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Deque;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.TimeUnit;
-
 import core.handler.ClientHandler;
 import core.handler.MessagePackEncode;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.WriteBufferWaterMark;
+import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.codec.string.StringEncoder;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Deque;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 远程Node
@@ -67,7 +62,7 @@ public class RemoteNode {
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
                 .handler(new ChannelInitializer<NioSocketChannel>() {
                     @Override
-                    protected void initChannel(NioSocketChannel ch) throws Exception {
+                    protected void initChannel(NioSocketChannel ch) {
                         ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast(new LengthFieldPrepender(4, true));
                         pipeline.addLast(new StringEncoder(StandardCharsets.UTF_8));
@@ -109,26 +104,23 @@ public class RemoteNode {
     }
 
     public void sendMessage(MessagePack messagePack) {
-        if (channel == null || !channel.isActive() || !channel.isWritable()) {
-            pendingMessages.addLast(messagePack);
-        } else {
-            channel.writeAndFlush(messagePack);
+        pendingMessages.addLast(messagePack);
+        if (channel != null && channel.isActive() && channel.isWritable()) {
+            channel.pipeline().fireUserEventTriggered(this);
         }
     }
 
     public void sendPing() {
-        if (channel != null && channel.isActive() || channel.isWritable()) {
+        if (channel != null && channel.isActive()) {
             channel.writeAndFlush(localNode.getPingMessage());
         }
     }
 
     public void flushPendingMessages() {
-        MessagePack messagePack = null;
-        while ((messagePack = pendingMessages.pollFirst()) != null) {
+        while (pendingMessages.peekFirst() != null) {
             if (channel != null && channel.isActive() && channel.isWritable()) {
-                channel.writeAndFlush(messagePack);
+                channel.writeAndFlush(pendingMessages.pollFirst());
             } else {
-                pendingMessages.addFirst(messagePack);
                 break;
             }
         }
@@ -137,8 +129,8 @@ public class RemoteNode {
     /**
      * 判断是否需要重建RemoteNode<br>
      * 注：如果老节点已经断开，且新节点的ip或端口发生变化，用新节点重建RemoteNode
-     * @param newNode
-     * @return
+     * @param newNode 新节点信息
+     * @return 是否需要用新节点重建
      */
     public boolean needRebuild(RemoteNode newNode) {
         if (isActive()) {

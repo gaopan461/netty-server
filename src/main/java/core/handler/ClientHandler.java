@@ -1,14 +1,14 @@
 package core.handler;
 
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.TimeUnit;
-
 import core.Log;
 import core.RemoteNode;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.Future;
+
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Node通信客户端Handler
@@ -25,7 +25,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+    public void channelActive(ChannelHandlerContext ctx) {
         Log.conn.debug("[{} ---> {}]连接到服务器成功，服务器地址={}", remoteNode.getLocalNode().getId(),
                 remoteNode.getId(), ctx.channel().remoteAddress());
 
@@ -52,7 +52,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+    public void channelInactive(ChannelHandlerContext ctx) {
         Log.conn.debug("[{} <--- {}]服务器断开了连接，服务器地址={}", remoteNode.getLocalNode().getId(),
                 remoteNode.getId(), ctx.channel().remoteAddress());
 
@@ -64,7 +64,7 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
+    public void channelWritabilityChanged(ChannelHandlerContext ctx) {
         Log.conn.debug("[{} <--- {}]服务器写状态改变，服务器地址={}，writable={}", remoteNode.getLocalNode().getId(),
                 remoteNode.getId(), ctx.channel().remoteAddress(), ctx.channel().isWritable());
 
@@ -75,11 +75,16 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         try {
             cause.printStackTrace();
         } finally {
             ReferenceCountUtil.release(cause);
         }
+    }
+
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
+        remoteNode.flushPendingMessages();
     }
 }
