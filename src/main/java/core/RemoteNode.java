@@ -1,19 +1,24 @@
 package core;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+
 import core.handler.ClientHandler;
 import core.handler.MessagePackEncode;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.channel.*;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.codec.string.StringEncoder;
-
-import java.nio.charset.StandardCharsets;
-import java.util.Deque;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 远程Node
@@ -38,7 +43,7 @@ public class RemoteNode {
     /** 连接套接字 */
     private Channel channel;
     /** 待发送缓存队列 */
-    private Deque<MessagePack> pendingMessages = new ConcurrentLinkedDeque<>();
+    private Queue<MessagePack> pendingMessages = new ConcurrentLinkedQueue<>();
 
     /** 最后一次收到连接检查时间 */
     private long lastRecvPingTime;
@@ -104,7 +109,7 @@ public class RemoteNode {
     }
 
     public void sendMessage(MessagePack messagePack) {
-        pendingMessages.addLast(messagePack);
+        pendingMessages.offer(messagePack);
         if (channel != null && channel.isActive() && channel.isWritable()) {
             channel.pipeline().fireUserEventTriggered(this);
         }
@@ -116,10 +121,15 @@ public class RemoteNode {
         }
     }
 
+    /**
+     * 这里不处理发送失败的情况了<br>
+     *     假定是服务器间的连接是稳定可靠的；这样除非对方服务器宕机，不然不可能失败；<br>
+     *     对于对方服务器宕机这种情况，发送队列中未发送的消息就失败了，被丢弃了，丢了就丢了吧！
+     */
     public void flushPendingMessages() {
-        while (pendingMessages.peekFirst() != null) {
+        while (pendingMessages.peek() != null) {
             if (channel != null && channel.isActive() && channel.isWritable()) {
-                channel.writeAndFlush(pendingMessages.pollFirst());
+                channel.writeAndFlush(pendingMessages.poll());
             } else {
                 break;
             }
